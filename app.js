@@ -67,6 +67,12 @@ function rollingTwelve(records, endYear, endMonth) {
     .reduce((sum, item) => sum + item.wert, 0);
 }
 
+function trendValuesFor(kennzahl, fahrzeugart) {
+  return (state.payload.trendValues ?? [])
+    .filter((item) => item.kennzahl === kennzahl && item.fahrzeugart === fahrzeugart)
+    .sort((a, b) => a.jahr - b.jahr);
+}
+
 function linePath(points) {
   return points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
 }
@@ -105,15 +111,25 @@ function renderMonthlyChart(records, year, monthLimit) {
 }
 
 function renderTrendChart(records, year, monthLimit) {
-  const years = [...new Set(records.map((item) => item.jahr))].sort((a, b) => a - b);
+  const storedTrend = trendValuesFor(state.kennzahl, state.fahrzeugart);
+  const latestTrendYear = storedTrend.reduce((max, item) => Math.max(max, item.jahr), 0);
   const width = 760;
   const height = 210;
   const pad = { top: 26, right: 20, bottom: 34, left: 36 };
-  const values = years.map((trendYear) => ({
-    year: trendYear,
-    value: sumFor(records, trendYear, trendYear === year ? monthLimit : 12),
-    partial: trendYear === year,
+  const values = storedTrend.map((item) => ({
+    year: item.jahr,
+    value: item.wert,
+    partial: false,
   }));
+
+  if (year > latestTrendYear) {
+    values.push({
+      year,
+      value: rollingTwelve(records, year, monthLimit),
+      partial: true,
+    });
+  }
+
   const maxValue = Math.max(...values.map((item) => item.value), 1);
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
@@ -128,7 +144,7 @@ function renderTrendChart(records, year, monthLimit) {
         const barH = (item.value / maxValue) * plotH;
         const y = pad.top + plotH - barH;
         const color = item.partial ? "#c99026" : "#1f5f9f";
-        const label = item.partial ? `${item.year} YTD` : item.year;
+        const label = item.partial ? `${item.year} 12M` : item.year;
         return `
           <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="5" fill="${color}"></rect>
           <text class="bar-label emphasis" x="${x + barW / 2}" y="${Math.max(14, y - 8)}" text-anchor="middle">${euroNumber.format(item.value)}</text>
@@ -166,7 +182,7 @@ function update() {
   qs("legendCurrent").textContent = year;
   qs("legendPrevious").textContent = previousYear;
   qs("monthlyCaption").textContent = `${MONTH_NAMES[0]} bis ${MONTH_NAMES[month - 1]} ${year} im Vergleich zu ${previousYear}`;
-  qs("trendCaption").textContent = `Jahressummen, ${year} bis ${MONTH_NAMES[month - 1]}`;
+  qs("trendCaption").textContent = `Jahressummen und ${year} rollierend 12 Monate bis ${MONTH_NAMES[month - 1]}`;
   qs("statusNote").textContent = `${year} ist bis ${MONTH_NAMES[month - 1]} befüllt; spätere Monate werden automatisch ergänzt.`;
 
   renderMonthlyChart(records, year, month);
